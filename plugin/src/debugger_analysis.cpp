@@ -35,6 +35,49 @@ nlohmann::json tool_parse_expression(const nlohmann::json& params) {
     };
 }
 
+nlohmann::json tool_evaluate_expressions(const nlohmann::json& params) {
+    if (!params.contains("expressions") || !params["expressions"].is_array()) {
+        throw ApiError("bad_request", "Missing array parameter: expressions");
+    }
+    const auto& expressions = params["expressions"];
+    if (expressions.size() > 256) {
+        throw ApiError("request_too_large", "Expression batches are capped at 256 items.");
+    }
+
+    nlohmann::json results = nlohmann::json::array();
+    int resolved = 0;
+    for (const auto& item : expressions) {
+        if (!item.is_string()) {
+            results.push_back({{"ok", false}, {"error", "expression item must be a string"}});
+            continue;
+        }
+        const std::string expression = item.get<std::string>();
+        duint value = 0;
+        if (!Script::Misc::ParseExpression(expression.c_str(), &value)) {
+            results.push_back({
+                {"expression", expression},
+                {"ok", false},
+                {"error", "parse_failed"},
+            });
+            continue;
+        }
+        ++resolved;
+        results.push_back({
+            {"expression", expression},
+            {"ok", true},
+            {"value", hex_value(value)},
+            {"value_decimal", static_cast<unsigned long long>(value)},
+        });
+    }
+
+    return {
+        {"count", results.size()},
+        {"resolved", resolved},
+        {"failed", static_cast<int>(results.size()) - resolved},
+        {"results", results},
+    };
+}
+
 nlohmann::json tool_get_branch_destination(const nlohmann::json& params) {
     const duint address = parse_address(params, "address");
     return branch_destination_json(address);

@@ -60,10 +60,12 @@ def create_server():
                 "read_memory",
                 "disassemble",
                 "parse_expression",
+                "evaluate_expressions",
                 "get_branch_destination",
                 "find_pattern",
                 "find_all_patterns",
                 "find_strings",
+                "find_instructions",
                 "list_calls_in_range",
                 "list_calls_in_function",
                 "analyze_function",
@@ -100,6 +102,7 @@ def create_server():
                 "get_page_at",
                 "query_symbols",
                 "list_labels",
+                "wait_for_pause",
             ],
             "mutating_tools": [
                 "set_register",
@@ -114,6 +117,7 @@ def create_server():
                 "remove_breakpoint",
                 "set_hardware_breakpoint",
                 "remove_hardware_breakpoint",
+                "set_breakpoint_options",
                 "set_memory_breakpoint",
                 "remove_memory_breakpoint",
                 "set_label",
@@ -136,12 +140,16 @@ def create_server():
                 "Use inspect_stack and inspect_call_args when stopped around calls or import thunks.",
                 "Pass owner_module to pointer/stack/call tools when raw values should be interpreted as module RVAs.",
                 "Use find_strings, list_iat, and analyze_linear_block before manual range walking.",
+                "Use evaluate_expressions to resolve multiple addresses/registers in one call.",
+                "Use find_instructions for mnemonic, operand, or branch-kind searches over modules/ranges.",
                 "Use find_pointers_to_range for data references that code xref scans miss.",
                 "Broad analysis tools expose limit/max_instructions; lower limit first on system modules.",
                 "For managed modules with non-executable CLR stubs, pass include_readonly_code_like_sections to reference scanners.",
                 "Address parameters accept x64dbg expressions directly, including cip and module+offset forms.",
                 "Use list_unresolved_breakpoints when persisted module breakpoints do not bind yet.",
                 "Use run_until and wait_for_module with explicit timeouts; they return timed_out instead of waiting forever.",
+                "Use wait_for_pause after run or manual debugger interaction before inspecting paused context.",
+                "Use set_breakpoint_options for conditions, logging, commands, names, singleshot, silent, and fast-resume flags.",
                 "Use memory breakpoints for data access/watchpoint cases when four hardware slots are not enough.",
                 "Use execute_command only when typed tools do not cover the operation.",
             ],
@@ -232,6 +240,11 @@ def create_server():
         return _result("parse_expression", {"expression": expression}, session_id=session_id, arch=arch)
 
     @mcp.tool()
+    def evaluate_expressions(expressions: list[str], session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+        """Resolve up to 256 x64dbg expressions in one call, returning per-expression success."""
+        return _result("evaluate_expressions", {"expressions": expressions}, session_id=session_id, arch=arch)
+
+    @mcp.tool()
     def get_branch_destination(address: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Resolve a branch/call/jump target. Falls back to readable indirect memory operands."""
         return _result("get_branch_destination", {"address": address}, session_id=session_id, arch=arch)
@@ -285,6 +298,42 @@ def create_server():
             params["start"] = start or ""
             params["size"] = size or ""
         return _result("find_strings", params, session_id=session_id, arch=arch, timeout_ms=30000)
+
+    @mcp.tool()
+    def find_instructions(
+        start: str | None = None,
+        size: str | None = None,
+        module: str | None = None,
+        mnemonic: str | None = None,
+        contains: str | None = None,
+        operand_contains: str | None = None,
+        kind: Literal["any", "branch", "call", "jump", "conditional_jump", "return", "memory", "stack", "normal"] = "any",
+        executable_only: bool = True,
+        case_sensitive: bool = False,
+        include_details: bool = False,
+        max_instructions: int = 50000,
+        limit: int = 500,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Search disassembly by mnemonic, text, operand text, or instruction kind in a module or range."""
+        params: dict[str, object] = {
+            "mnemonic": mnemonic,
+            "contains": contains,
+            "operand_contains": operand_contains,
+            "kind": kind,
+            "executable_only": executable_only,
+            "case_sensitive": case_sensitive,
+            "include_details": include_details,
+            "max_instructions": max_instructions,
+            "limit": limit,
+        }
+        if module:
+            params["module"] = module
+        else:
+            params["start"] = start or ""
+            params["size"] = size or ""
+        return _result("find_instructions", params, session_id=session_id, arch=arch, timeout_ms=30000)
 
     @mcp.tool()
     def list_calls_in_range(start: str, size: str, max_instructions: int = 512, limit: int = 200, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
@@ -495,6 +544,29 @@ def create_server():
         return _result("step", {"kind": kind}, session_id=session_id, arch=arch)
 
     @mcp.tool()
+    def wait_for_pause(
+        timeout_ms: int = 10000,
+        poll_ms: int = 25,
+        instruction_count: int = 8,
+        include_context: bool = True,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Wait bounded time for a running debuggee to pause, returning status and optional break context."""
+        return _result(
+            "wait_for_pause",
+            {
+                "timeout_ms": timeout_ms,
+                "poll_ms": poll_ms,
+                "instruction_count": instruction_count,
+                "include_context": include_context,
+            },
+            session_id=session_id,
+            arch=arch,
+            timeout_ms=max(timeout_ms, 0) + 5000,
+        )
+
+    @mcp.tool()
     def run_until(
         address: str,
         timeout_ms: int = 10000,
@@ -567,6 +639,42 @@ def create_server():
     def remove_hardware_breakpoint(address: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Remove a CPU hardware breakpoint at an address or expression."""
         return _result("remove_hardware_breakpoint", {"address": address}, session_id=session_id, arch=arch)
+
+    @mcp.tool()
+    def set_breakpoint_options(
+        address: str,
+        type: Literal["normal", "software", "hardware", "memory"] = "normal",
+        name: str | None = None,
+        condition: str | None = None,
+        log_text: str | None = None,
+        log_condition: str | None = None,
+        command_text: str | None = None,
+        command_condition: str | None = None,
+        fast_resume: bool | None = None,
+        single_shot: bool | None = None,
+        silent: bool | None = None,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Set name, conditions, logging, command, singleshot, silent, or fast-resume flags on a breakpoint."""
+        return _result(
+            "set_breakpoint_options",
+            {
+                "address": address,
+                "type": type,
+                "name": name,
+                "condition": condition,
+                "log_text": log_text,
+                "log_condition": log_condition,
+                "command_text": command_text,
+                "command_condition": command_condition,
+                "fast_resume": fast_resume,
+                "single_shot": single_shot,
+                "silent": silent,
+            },
+            session_id=session_id,
+            arch=arch,
+        )
 
     @mcp.tool()
     def set_memory_breakpoint(

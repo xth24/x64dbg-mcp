@@ -155,6 +155,23 @@ nlohmann::json memory_breakpoints_page() {
 
 } // namespace
 
+nlohmann::json tool_wait_for_pause(const nlohmann::json& params) {
+    if (!DbgIsDebugging()) {
+        throw ApiError("not_debugging", "No debuggee is currently active.");
+    }
+
+    const int timeout_ms = parse_int(params, "timeout_ms", 10000, 0, 300000);
+    const int poll_ms = parse_int(params, "poll_ms", 25, 10, 1000);
+    const int instruction_count = parse_int(params, "instruction_count", 8, 1, 32);
+    const bool include_context = parse_bool(params, "include_context", true);
+    nlohmann::json result = wait_for_pause(timeout_ms, poll_ms, instruction_count);
+    result["action"] = "wait_for_pause";
+    if (include_context && DbgIsDebugging() && !DbgIsRunning()) {
+        result["break_context"] = tool_snapshot_break_context({{"instruction_count", instruction_count}, {"stack_slots", 8}});
+    }
+    return result;
+}
+
 nlohmann::json tool_run_until(const nlohmann::json& params) {
     if (!DbgIsDebugging()) {
         throw ApiError("not_debugging", "No debuggee is currently active.");

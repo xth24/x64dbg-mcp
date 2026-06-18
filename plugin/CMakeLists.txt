@@ -67,8 +67,10 @@ endif()
 
 set(SOURCES
     src/debugger_analysis.cpp
+    src/debugger_breakpoint_options.cpp
     src/debugger_context.cpp
     src/debugger_execution.cpp
+    src/debugger_instruction_search.cpp
     src/debugger_inspection.cpp
     src/debugger_linear.cpp
     src/debugger_metadata.cpp
