@@ -1,0 +1,14 @@
+build/
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.venv/
+deps/
+*.dp32
+*.dp64
+*.pdb
+*.ilk
+*.obj
+*.lib
+*.exp
