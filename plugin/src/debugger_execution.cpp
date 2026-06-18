@@ -39,6 +39,24 @@ std::vector<BPXTYPE> breakpoint_types_from_filter(const std::string& filter) {
     throw ApiError("bad_request", "Breakpoint type must be all, normal, hardware, memory, dll, or exception.");
 }
 
+BPXTYPE breakpoint_type_from_mutation_filter(const std::string& filter) {
+    const std::string type = lower_ascii(filter.empty() ? "normal" : filter);
+    if (type == "normal" || type == "software") return bp_normal;
+    if (type == "hardware") return bp_hardware;
+    if (type == "memory") return bp_memory;
+    throw ApiError("bad_request", "Breakpoint type must be normal, hardware, or memory.");
+}
+
+std::string breakpoint_enable_command_name(BPXTYPE type, bool enabled) {
+    switch (type) {
+    case bp_normal: return enabled ? "bpe" : "bpd";
+    case bp_hardware: return enabled ? "bphwe" : "bphwd";
+    case bp_memory: return enabled ? "bpme" : "bpmd";
+    default: break;
+    }
+    throw ApiError("bad_request", "Breakpoint type must be normal, hardware, or memory.");
+}
+
 std::vector<BreakpointRecord> get_breakpoint_records(const std::string& type_filter) {
     std::vector<BreakpointRecord> records;
     for (BPXTYPE type : breakpoint_types_from_filter(type_filter)) {
@@ -53,6 +71,15 @@ std::vector<BreakpointRecord> get_breakpoint_records(const std::string& type_fil
         BridgeFree(map.bp);
     }
     return records;
+}
+
+std::optional<BreakpointRecord> find_breakpoint_record(BPXTYPE type, duint address) {
+    for (const auto& record : get_breakpoint_records(breakpoint_type_name(type))) {
+        if (record.bp.type == type && record.bp.addr == address) {
+            return record;
+        }
+    }
+    return std::nullopt;
 }
 
 std::vector<Script::Module::ModuleInfo> get_loaded_modules_or_empty() {
@@ -373,6 +400,34 @@ nlohmann::json tool_remove_breakpoint(const nlohmann::json& params) {
         {"address", hex_value(address)},
         {"success", Script::Debug::DeleteBreakpoint(address)},
     };
+}
+
+nlohmann::json tool_set_breakpoint_enabled(const nlohmann::json& params) {
+    if (!DbgIsDebugging()) {
+        throw ApiError("not_debugging", "No debuggee is currently active.");
+    }
+    const duint address = parse_address(params, "address");
+    const bool enabled = parse_bool(params, "enabled", true);
+    const std::string requested_type = optional_string(params, "type", "normal");
+    const BPXTYPE type = breakpoint_type_from_mutation_filter(requested_type);
+    const std::string command = breakpoint_enable_command_name(type, enabled) + " " + hex_value(address);
+    const bool success = DbgCmdExecDirect(command.c_str());
+
+    nlohmann::json out = {
+        {"action", "set_breakpoint_enabled"},
+        {"address", hex_value(address)},
+        {"type", breakpoint_type_name(type)},
+        {"enabled", enabled},
+        {"command", command},
+        {"success", success},
+    };
+    if (const auto record = find_breakpoint_record(type, address)) {
+        out["breakpoint_found"] = true;
+        out["current"] = breakpoint_json(*record, true);
+    } else {
+        out["breakpoint_found"] = false;
+    }
+    return out;
 }
 
 nlohmann::json tool_set_hardware_breakpoint(const nlohmann::json& params) {

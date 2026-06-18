@@ -46,6 +46,7 @@ nlohmann::json tool_run_until(const nlohmann::json& params);
 nlohmann::json tool_wait_for_module(const nlohmann::json& params);
 nlohmann::json tool_set_breakpoint(const nlohmann::json& params);
 nlohmann::json tool_remove_breakpoint(const nlohmann::json& params);
+nlohmann::json tool_set_breakpoint_enabled(const nlohmann::json& params);
 nlohmann::json tool_set_hardware_breakpoint(const nlohmann::json& params);
 nlohmann::json tool_remove_hardware_breakpoint(const nlohmann::json& params);
 nlohmann::json tool_set_breakpoint_options(const nlohmann::json& params);

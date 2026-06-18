@@ -57,6 +57,7 @@ const std::unordered_map<std::string, Tool>& tools() {
         {"wait_for_module", tool_wait_for_module},
         {"set_breakpoint", tool_set_breakpoint},
         {"remove_breakpoint", tool_remove_breakpoint},
+        {"set_breakpoint_enabled", tool_set_breakpoint_enabled},
         {"set_hardware_breakpoint", tool_set_hardware_breakpoint},
         {"remove_hardware_breakpoint", tool_remove_hardware_breakpoint},
         {"set_breakpoint_options", tool_set_breakpoint_options},

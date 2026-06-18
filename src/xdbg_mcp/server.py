@@ -117,6 +117,7 @@ def create_server():
             "wait_for_module",
             "set_breakpoint",
             "remove_breakpoint",
+            "set_breakpoint_enabled",
             "set_hardware_breakpoint",
             "remove_hardware_breakpoint",
             "set_breakpoint_options",
@@ -681,6 +682,17 @@ def create_server():
     def remove_breakpoint(address: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Remove a normal software breakpoint at an address or expression."""
         return _result("remove_breakpoint", {"address": address}, session_id=session_id, arch=arch)
+
+    @mcp.tool()
+    def set_breakpoint_enabled(
+        address: str,
+        enabled: bool,
+        type: Literal["normal", "software", "hardware", "memory"] = "normal",
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Enable or disable a normal, hardware, or memory breakpoint at an address or expression."""
+        return _result("set_breakpoint_enabled", {"address": address, "enabled": enabled, "type": type}, session_id=session_id, arch=arch)
 
     @mcp.tool()
     def set_hardware_breakpoint(address: str, type: Literal["execute", "write", "access"] = "execute", session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
