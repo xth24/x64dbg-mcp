@@ -108,10 +108,14 @@ def create_server():
                 "pause",
                 "stop",
                 "step",
+                "run_until",
+                "wait_for_module",
                 "set_breakpoint",
                 "remove_breakpoint",
                 "set_hardware_breakpoint",
                 "remove_hardware_breakpoint",
+                "set_memory_breakpoint",
+                "remove_memory_breakpoint",
                 "set_label",
                 "set_comment",
                 "execute_command",
@@ -137,6 +141,8 @@ def create_server():
                 "For managed modules with non-executable CLR stubs, pass include_readonly_code_like_sections to reference scanners.",
                 "Address parameters accept x64dbg expressions directly, including cip and module+offset forms.",
                 "Use list_unresolved_breakpoints when persisted module breakpoints do not bind yet.",
+                "Use run_until and wait_for_module with explicit timeouts; they return timed_out instead of waiting forever.",
+                "Use memory breakpoints for data access/watchpoint cases when four hardware slots are not enough.",
                 "Use execute_command only when typed tools do not cover the operation.",
             ],
         }
@@ -489,6 +495,60 @@ def create_server():
         return _result("step", {"kind": kind}, session_id=session_id, arch=arch)
 
     @mcp.tool()
+    def run_until(
+        address: str,
+        timeout_ms: int = 10000,
+        temporary: bool = True,
+        keep_breakpoint_on_timeout: bool = False,
+        poll_ms: int = 25,
+        instruction_count: int = 8,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Set a temporary software breakpoint, run, and wait bounded time for the target address."""
+        return _result(
+            "run_until",
+            {
+                "address": address,
+                "timeout_ms": timeout_ms,
+                "temporary": temporary,
+                "keep_breakpoint_on_timeout": keep_breakpoint_on_timeout,
+                "poll_ms": poll_ms,
+                "instruction_count": instruction_count,
+            },
+            session_id=session_id,
+            arch=arch,
+            timeout_ms=max(timeout_ms, 0) + 5000,
+        )
+
+    @mcp.tool()
+    def wait_for_module(
+        module: str,
+        timeout_ms: int = 15000,
+        poll_ms: int = 100,
+        run: bool = True,
+        pause_on_found: bool = True,
+        instruction_count: int = 8,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Run or poll until a module is loaded, optionally pausing and returning a snapshot when found."""
+        return _result(
+            "wait_for_module",
+            {
+                "module": module,
+                "timeout_ms": timeout_ms,
+                "poll_ms": poll_ms,
+                "run": run,
+                "pause_on_found": pause_on_found,
+                "instruction_count": instruction_count,
+            },
+            session_id=session_id,
+            arch=arch,
+            timeout_ms=max(timeout_ms, 0) + 5000,
+        )
+
+    @mcp.tool()
     def set_breakpoint(address: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Set a normal software breakpoint at an address or expression."""
         return _result("set_breakpoint", {"address": address}, session_id=session_id, arch=arch)
@@ -507,6 +567,29 @@ def create_server():
     def remove_hardware_breakpoint(address: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Remove a CPU hardware breakpoint at an address or expression."""
         return _result("remove_hardware_breakpoint", {"address": address}, session_id=session_id, arch=arch)
+
+    @mcp.tool()
+    def set_memory_breakpoint(
+        address: str,
+        size: str | None = None,
+        type: Literal["access", "read", "write", "execute"] = "access",
+        restore: bool = True,
+        single_shot: bool = False,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Set a memory breakpoint. Omit size for region mode; pass size for an exact range."""
+        return _result(
+            "set_memory_breakpoint",
+            {"address": address, "size": size, "type": type, "restore": restore, "single_shot": single_shot},
+            session_id=session_id,
+            arch=arch,
+        )
+
+    @mcp.tool()
+    def remove_memory_breakpoint(address: str | None = None, remove_all: bool = False, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+        """Remove one memory breakpoint. Use remove_all=True only when intentionally clearing all memory breakpoints."""
+        return _result("remove_memory_breakpoint", {"address": address, "all": remove_all}, session_id=session_id, arch=arch)
 
     @mcp.tool()
     def list_breakpoints(
