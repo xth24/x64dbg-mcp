@@ -1,5 +1,6 @@
 #include "debugger_tools.h"
 
+#include "import_utils.h"
 #include "instruction_utils.h"
 #include "json_helpers.h"
 #include "memory_utils.h"
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,10 +56,11 @@ nlohmann::json address_context_json(duint address) {
     return out;
 }
 
-nlohmann::json value_json(duint value, bool include_strings) {
+nlohmann::json value_json(duint value, bool include_strings, const Script::Module::ModuleInfo* owner_module) {
     nlohmann::json out = {
         {"value", hex_value(value)},
         {"is_null", value == 0},
+        {"pointer_classification", classify_pointer_value(value, owner_module)},
     };
     if (value == 0) {
         return out;
@@ -73,7 +76,7 @@ nlohmann::json value_json(duint value, bool include_strings) {
     return out;
 }
 
-nlohmann::json pointer_slot_json(duint address, bool include_strings) {
+nlohmann::json pointer_slot_json(duint address, bool include_strings, const Script::Module::ModuleInfo* owner_module) {
     duint value = 0;
     duint read = 0;
     if (!Script::Memory::Read(address, &value, sizeof(value), &read) || read != sizeof(value)) {
@@ -92,27 +95,40 @@ nlohmann::json pointer_slot_json(duint address, bool include_strings) {
         {"is_null", value == 0},
     };
     if (value != 0) {
-        out["value_info"] = value_json(value, include_strings);
+        out["value_info"] = value_json(value, include_strings, owner_module);
         out["possible_return_address"] = is_executable_address(value);
     }
+    out["pointer_classification"] = classify_pointer_value(value, owner_module);
     return out;
 }
 
-nlohmann::json register_arg_json(int index, const char* name, Script::Register::RegisterEnum reg, bool include_strings) {
+nlohmann::json register_arg_json(int index, const char* name, Script::Register::RegisterEnum reg, bool include_strings, const Script::Module::ModuleInfo* owner_module) {
     const duint value = Script::Register::Get(reg);
-    nlohmann::json out = value_json(value, include_strings);
+    nlohmann::json out = value_json(value, include_strings, owner_module);
     out["index"] = index;
     out["source"] = "register";
     out["register"] = name;
     return out;
 }
 
-nlohmann::json stack_arg_json(int index, duint slot, bool include_strings) {
-    nlohmann::json out = pointer_slot_json(slot, include_strings);
+nlohmann::json stack_arg_json(int index, duint slot, bool include_strings, const Script::Module::ModuleInfo* owner_module) {
+    nlohmann::json out = pointer_slot_json(slot, include_strings, owner_module);
     out["index"] = index;
     out["source"] = "stack";
     out["stack_slot"] = hex_value(slot);
     return out;
+}
+
+std::optional<Script::Module::ModuleInfo> owner_module_from_params(const nlohmann::json& params) {
+    const std::string owner_module = optional_string(params, "owner_module");
+    if (owner_module.empty()) {
+        return std::nullopt;
+    }
+    const auto module = find_module_by_name(owner_module);
+    if (!module) {
+        throw ApiError("module_not_found", "Owner module was not found: " + owner_module);
+    }
+    return module;
 }
 
 std::vector<ScanRange> readable_ranges_for_bounds(duint start, duint size, const std::string& module) {
@@ -212,11 +228,13 @@ nlohmann::json tool_inspect_stack(const nlohmann::json& params) {
     const duint start = address_expr.empty() ? csp : parse_address(params, "address");
     const int slots = parse_int(params, "slots", 32, 1, 512);
     const bool include_strings = parse_bool(params, "include_strings", true);
+    const auto owner_module = owner_module_from_params(params);
 
     nlohmann::json out = nlohmann::json::array();
     for (int i = 0; i < slots; ++i) {
         const duint slot = start + static_cast<duint>(i) * sizeof(duint);
-        nlohmann::json item = pointer_slot_json(slot, include_strings);
+        const auto slot_owner = owner_module ? owner_module : find_module_at(slot);
+        nlohmann::json item = pointer_slot_json(slot, include_strings, slot_owner ? &*slot_owner : nullptr);
         item["slot"] = i;
         item["offset_from_start"] = hex_value(slot - start);
         if (slot >= csp) {
@@ -231,6 +249,7 @@ nlohmann::json tool_inspect_stack(const nlohmann::json& params) {
         {"slots", slots},
         {"pointer_size", sizeof(duint)},
         {"include_strings", include_strings},
+        {"owner_module", owner_module ? module_info_json(*owner_module) : nlohmann::json(nullptr)},
         {"stack", out},
     };
 }
@@ -249,17 +268,19 @@ nlohmann::json tool_inspect_call_args(const nlohmann::json& params) {
     const std::string stack_mode = optional_string(params, "stack_mode", "callee");
     const bool before_call = stack_mode == "before_call";
     const std::string convention = optional_string(params, "convention", "auto");
+    const auto owner_module = owner_module_from_params(params);
+    const auto* owner = owner_module ? &*owner_module : nullptr;
 
     nlohmann::json args = nlohmann::json::array();
 
 #ifdef _WIN64
-    if (count > 0) args.push_back(register_arg_json(0, "rcx", Script::Register::RCX, include_strings));
-    if (count > 1) args.push_back(register_arg_json(1, "rdx", Script::Register::RDX, include_strings));
-    if (count > 2) args.push_back(register_arg_json(2, "r8", Script::Register::R8, include_strings));
-    if (count > 3) args.push_back(register_arg_json(3, "r9", Script::Register::R9, include_strings));
+    if (count > 0) args.push_back(register_arg_json(0, "rcx", Script::Register::RCX, include_strings, owner));
+    if (count > 1) args.push_back(register_arg_json(1, "rdx", Script::Register::RDX, include_strings, owner));
+    if (count > 2) args.push_back(register_arg_json(2, "r8", Script::Register::R8, include_strings, owner));
+    if (count > 3) args.push_back(register_arg_json(3, "r9", Script::Register::R9, include_strings, owner));
     const duint stack_base = csp + (before_call ? 0x20 : 0x28);
     for (int i = 4; i < count; ++i) {
-        args.push_back(stack_arg_json(i, stack_base + static_cast<duint>(i - 4) * sizeof(duint), include_strings));
+        args.push_back(stack_arg_json(i, stack_base + static_cast<duint>(i - 4) * sizeof(duint), include_strings, owner));
     }
     const std::string effective_convention = "windows_x64";
 #else
@@ -267,14 +288,14 @@ nlohmann::json tool_inspect_call_args(const nlohmann::json& params) {
     const bool fastcall = convention == "fastcall";
     int index = 0;
     if ((thiscall || fastcall) && index < count) {
-        args.push_back(register_arg_json(index++, "ecx", Script::Register::ECX, include_strings));
+        args.push_back(register_arg_json(index++, "ecx", Script::Register::ECX, include_strings, owner));
     }
     if (fastcall && index < count) {
-        args.push_back(register_arg_json(index++, "edx", Script::Register::EDX, include_strings));
+        args.push_back(register_arg_json(index++, "edx", Script::Register::EDX, include_strings, owner));
     }
     const duint stack_base = csp + (before_call ? 0 : sizeof(duint));
     while (index < count) {
-        args.push_back(stack_arg_json(index, stack_base + static_cast<duint>(index - (fastcall ? 2 : thiscall ? 1 : 0)) * sizeof(duint), include_strings));
+        args.push_back(stack_arg_json(index, stack_base + static_cast<duint>(index - (fastcall ? 2 : thiscall ? 1 : 0)) * sizeof(duint), include_strings, owner));
         ++index;
     }
     const std::string effective_convention = thiscall ? "thiscall" : fastcall ? "fastcall" : "cdecl_stdcall";
@@ -290,17 +311,18 @@ nlohmann::json tool_inspect_call_args(const nlohmann::json& params) {
         {"stack_mode", before_call ? "before_call" : "callee"},
         {"count", count},
         {"include_strings", include_strings},
+        {"owner_module", owner_module ? module_info_json(*owner_module) : nlohmann::json(nullptr)},
         {"instruction", instruction_json(address)},
         {"args", args},
         {"note", "Registers and stack values are current debugger state; non-current addresses are not emulated."},
     };
     if (!before_call) {
-        result["return_address"] = pointer_slot_json(csp, include_strings);
+        result["return_address"] = pointer_slot_json(csp, include_strings, owner);
     }
 #ifndef _WIN64
     result["register_candidates"] = {
-        {"ecx", value_json(Script::Register::Get(Script::Register::ECX), include_strings)},
-        {"edx", value_json(Script::Register::Get(Script::Register::EDX), include_strings)},
+        {"ecx", value_json(Script::Register::Get(Script::Register::ECX), include_strings, owner)},
+        {"edx", value_json(Script::Register::Get(Script::Register::EDX), include_strings, owner)},
     };
 #endif
     return result;

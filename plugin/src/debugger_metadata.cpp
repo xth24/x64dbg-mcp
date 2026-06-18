@@ -7,6 +7,24 @@
 
 #include <algorithm>
 
+namespace {
+
+bool page_matches_module(const MEMPAGE& page, const std::string& module_filter) {
+    if (module_filter.empty()) {
+        return true;
+    }
+    if (contains_ascii_ci(page.info, module_filter)) {
+        return true;
+    }
+    const auto base = reinterpret_cast<duint>(page.mbi.BaseAddress);
+    if (const auto module = find_module_at(base)) {
+        return module_name_or_path_matches(*module, module_filter);
+    }
+    return false;
+}
+
+} // namespace
+
 nlohmann::json tool_list_modules(const nlohmann::json& params) {
     const std::string module_filter = optional_string(params, "module");
     const std::string path_filter = optional_string(params, "path_contains");
@@ -217,14 +235,60 @@ nlohmann::json tool_list_threads(const nlohmann::json&) {
     };
 }
 
-nlohmann::json tool_get_memory_map(const nlohmann::json&) {
+nlohmann::json tool_get_memory_map(const nlohmann::json& params) {
+    const int offset = parse_int(params, "offset", 0, 0, 100000000);
+    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const std::string module_filter = optional_string(params, "module");
+    const std::string state_filter = optional_string(params, "state");
+    const std::string type_filter = optional_string(params, "type");
+    const std::string protect_filter = optional_string(params, "protect");
+    const bool readable_only = parse_bool(params, "readable_only", false);
+
     const auto map = get_memory_pages();
     nlohmann::json pages = nlohmann::json::array();
+    int matched = 0;
+    int emitted = 0;
     for (const auto& page : map) {
+        const nlohmann::json item = memory_page_json(page);
+        if (!module_filter.empty() && !page_matches_module(page, module_filter)) {
+            continue;
+        }
+        if (!state_filter.empty() && item.value("state", "") != state_filter) {
+            continue;
+        }
+        if (!type_filter.empty() && item.value("type", "") != type_filter) {
+            continue;
+        }
+        if (!protect_filter.empty() && item.value("protect", "") != protect_filter) {
+            continue;
+        }
+        if (readable_only && !item.value("readable", false)) {
+            continue;
+        }
+        if (matched++ < offset) {
+            continue;
+        }
+        if (emitted++ >= limit) {
+            continue;
+        }
         pages.push_back(memory_page_json(page));
     }
 
-    return {{"count", pages.size()}, {"pages", pages}};
+    return {
+        {"total", matched},
+        {"offset", offset},
+        {"limit", limit},
+        {"count", pages.size()},
+        {"truncated", matched > offset + static_cast<int>(pages.size())},
+        {"filters", {
+            {"module", module_filter},
+            {"state", state_filter},
+            {"type", type_filter},
+            {"protect", protect_filter},
+            {"readable_only", readable_only},
+        }},
+        {"pages", pages},
+    };
 }
 
 nlohmann::json tool_get_page_at(const nlohmann::json& params) {
@@ -285,15 +349,33 @@ nlohmann::json tool_query_symbols(const nlohmann::json& params) {
     };
 }
 
-nlohmann::json tool_list_labels(const nlohmann::json&) {
+nlohmann::json tool_list_labels(const nlohmann::json& params) {
+    const int offset = parse_int(params, "offset", 0, 0, 100000000);
+    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const std::string module_filter = optional_string(params, "module");
+    const std::string contains = optional_string(params, "contains");
     ListInfo list{};
     if (!Script::Label::GetList(&list) || !list.data) {
-        return {{"count", 0}, {"labels", nlohmann::json::array()}};
+        return {{"total", 0}, {"offset", offset}, {"limit", limit}, {"count", 0}, {"labels", nlohmann::json::array()}};
     }
 
     auto* labels = static_cast<Script::Label::LabelInfo*>(list.data);
     nlohmann::json out = nlohmann::json::array();
+    int matched = 0;
+    int emitted = 0;
     for (size_t i = 0; i < list.count; ++i) {
+        if (!module_filter.empty() && !contains_ascii_ci(labels[i].mod, module_filter)) {
+            continue;
+        }
+        if (!contains.empty() && !contains_ascii_ci(labels[i].text, contains)) {
+            continue;
+        }
+        if (matched++ < offset) {
+            continue;
+        }
+        if (emitted++ >= limit) {
+            continue;
+        }
         out.push_back({
             {"module", labels[i].mod},
             {"rva", hex_value(labels[i].rva)},
@@ -302,7 +384,15 @@ nlohmann::json tool_list_labels(const nlohmann::json&) {
         });
     }
     BridgeFree(list.data);
-    return {{"count", out.size()}, {"labels", out}};
+    return {
+        {"total", matched},
+        {"offset", offset},
+        {"limit", limit},
+        {"count", out.size()},
+        {"truncated", matched > offset + static_cast<int>(out.size())},
+        {"filters", {{"module", module_filter}, {"contains", contains}}},
+        {"labels", out},
+    };
 }
 
 nlohmann::json tool_set_label(const nlohmann::json& params) {

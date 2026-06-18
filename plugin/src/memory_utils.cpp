@@ -36,9 +36,24 @@ bool is_readable_page(const MEMPAGE& page) {
            !(page.mbi.Protect & PAGE_GUARD);
 }
 
+std::string readable_reason(const MEMPAGE& page) {
+    const DWORD protect = page.mbi.Protect & 0xff;
+    if (page.mbi.State != MEM_COMMIT) {
+        return "not_committed";
+    }
+    if (page.mbi.Protect & PAGE_GUARD) {
+        return "guard_page";
+    }
+    if (protect == PAGE_NOACCESS) {
+        return "no_access";
+    }
+    return "readable";
+}
+
 nlohmann::json memory_page_json(const MEMPAGE& page) {
     const auto base = reinterpret_cast<duint>(page.mbi.BaseAddress);
     const auto size = static_cast<duint>(page.mbi.RegionSize);
+    const bool readable = is_readable_page(page);
     return {
         {"base", hex_value(base)},
         {"size", hex_value(size)},
@@ -46,9 +61,11 @@ nlohmann::json memory_page_json(const MEMPAGE& page) {
         {"state", memory_state_name(page.mbi.State)},
         {"protect", protection_name(page.mbi.Protect)},
         {"protect_raw", page.mbi.Protect},
+        {"guard", (page.mbi.Protect & PAGE_GUARD) != 0},
         {"type", memory_type_name(page.mbi.Type)},
         {"info", page.info},
-        {"readable", is_readable_page(page)},
+        {"readable", readable},
+        {"readable_reason", readable ? "readable" : readable_reason(page)},
     };
 }
 

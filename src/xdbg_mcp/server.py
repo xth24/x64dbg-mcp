@@ -130,6 +130,7 @@ def create_server():
             "notes": [
                 "Prefer get_snapshot for debugger state and inspect_address for one-address orientation.",
                 "Use inspect_stack and inspect_call_args when stopped around calls or import thunks.",
+                "Pass owner_module to pointer/stack/call tools when raw values should be interpreted as module RVAs.",
                 "Use find_strings, list_iat, and analyze_linear_block before manual range walking.",
                 "Use find_pointers_to_range for data references that code xref scans miss.",
                 "Broad analysis tools expose limit/max_instructions; lower limit first on system modules.",
@@ -397,9 +398,9 @@ def create_server():
         return _result("inspect_instruction", {"address": address}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def read_pointer(address: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def read_pointer(address: str, owner_module: str | None = None, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Read a pointer-sized value and annotate the target when non-null."""
-        return _result("read_pointer", {"address": address}, session_id=session_id, arch=arch)
+        return _result("read_pointer", {"address": address, "owner_module": owner_module}, session_id=session_id, arch=arch)
 
     @mcp.tool()
     def deref_chain(address: str, depth: int = 4, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
@@ -407,9 +408,9 @@ def create_server():
         return _result("deref_chain", {"address": address, "depth": depth}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def inspect_stack(address: str | None = None, slots: int = 32, include_strings: bool = True, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def inspect_stack(address: str | None = None, slots: int = 32, include_strings: bool = True, owner_module: str | None = None, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Annotate stack slots as pointers, strings, symbols, modules, and possible return addresses."""
-        params: dict[str, object] = {"slots": slots, "include_strings": include_strings}
+        params: dict[str, object] = {"slots": slots, "include_strings": include_strings, "owner_module": owner_module}
         if address:
             params["address"] = address
         return _result("inspect_stack", params, session_id=session_id, arch=arch)
@@ -421,6 +422,7 @@ def create_server():
         convention: Literal["auto", "cdecl", "stdcall", "thiscall", "fastcall", "windows_x64"] = "auto",
         stack_mode: Literal["callee", "before_call"] = "callee",
         include_strings: bool = True,
+        owner_module: str | None = None,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
     ) -> dict:
@@ -430,6 +432,7 @@ def create_server():
             "convention": convention,
             "stack_mode": stack_mode,
             "include_strings": include_strings,
+            "owner_module": owner_module,
         }
         if address:
             params["address"] = address
@@ -621,9 +624,24 @@ def create_server():
         return _result("list_threads", session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def get_memory_map(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
-        """List mapped memory pages with protection, type, and x64dbg page info."""
-        return _result("get_memory_map", session_id=session_id, arch=arch)
+    def get_memory_map(
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+        module: str | None = None,
+        state: Literal["commit", "reserve", "free"] | None = None,
+        type: Literal["image", "mapped", "private"] | None = None,
+        protect: str | None = None,
+        readable_only: bool = False,
+        offset: int = 0,
+        limit: int = 500,
+    ) -> dict:
+        """List mapped memory pages with filters and pagination."""
+        return _result(
+            "get_memory_map",
+            {"module": module, "state": state, "type": type, "protect": protect, "readable_only": readable_only, "offset": offset, "limit": limit},
+            session_id=session_id,
+            arch=arch,
+        )
 
     @mcp.tool()
     def get_page_at(address: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
@@ -636,9 +654,9 @@ def create_server():
         return _result("query_symbols", {"module": module, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def list_labels(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
-        """List labels currently known to x64dbg/x32dbg."""
-        return _result("list_labels", session_id=session_id, arch=arch)
+    def list_labels(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None, module: str | None = None, contains: str | None = None, offset: int = 0, limit: int = 500) -> dict:
+        """List labels currently known to x64dbg/x32dbg with filters and pagination."""
+        return _result("list_labels", {"module": module, "contains": contains, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 
     @mcp.tool()
     def set_label(address: str, text: str, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:

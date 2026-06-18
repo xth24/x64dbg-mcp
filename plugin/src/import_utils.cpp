@@ -53,20 +53,15 @@ nlohmann::json import_pointer_json(duint slot) {
     return out;
 }
 
-nlohmann::json classify_import_pointer(duint slot, const Script::Module::ModuleInfo& module) {
-    duint value = 0;
-    duint read = 0;
-    if (!Script::Memory::Read(slot, &value, sizeof(value), &read) || read != sizeof(value)) {
-        return {{"kind", "unreadable"}};
-    }
+nlohmann::json classify_pointer_value(duint value, const Script::Module::ModuleInfo* owner_module) {
     if (value == 0) {
         return {{"kind", "null"}, {"value", hex_value(value)}};
     }
     if (find_module_at(value)) {
         return {{"kind", "absolute_loaded_address"}, {"value", hex_value(value)}, {"target", address_context_json(value)}};
     }
-    if (value < module.size) {
-        const duint absolute = module.base + value;
+    if (owner_module && value >= 0x1000 && value < owner_module->size) {
+        const duint absolute = owner_module->base + value;
         nlohmann::json result = {
             {"kind", "owner_module_rva"},
             {"value", hex_value(value)},
@@ -77,4 +72,17 @@ nlohmann::json classify_import_pointer(duint slot, const Script::Module::ModuleI
         return result;
     }
     return {{"kind", "raw_unresolved"}, {"value", hex_value(value)}};
+}
+
+nlohmann::json classify_pointer_at(duint slot, const Script::Module::ModuleInfo* owner_module) {
+    duint value = 0;
+    duint read = 0;
+    if (!Script::Memory::Read(slot, &value, sizeof(value), &read) || read != sizeof(value)) {
+        return {{"kind", "unreadable"}};
+    }
+    return classify_pointer_value(value, owner_module);
+}
+
+nlohmann::json classify_import_pointer(duint slot, const Script::Module::ModuleInfo& module) {
+    return classify_pointer_at(slot, &module);
 }

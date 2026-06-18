@@ -366,14 +366,19 @@ nlohmann::json tool_find_references_to_range(const nlohmann::json& params) {
                 operands.push_back({{"operand", nullptr}, {"field", "branch_destination"}, {"value", hex_value(branch)}, {"context", address_context_json(branch)}});
             }
             if (!operands.empty()) {
-                refs.push_back({
+                nlohmann::json item = {
                     {"address", hex_value(current)},
                     {"module", range.module},
                     {"scan_source", range.source},
                     {"section", range.section},
                     {"instruction", instruction.instruction},
                     {"references", operands},
-                });
+                    {"scan_confidence", range.source == "readonly_code_like_section" ? "low" : "normal"},
+                };
+                if (range.source == "readonly_code_like_section") {
+                    item["confidence_reason"] = "non_executable_section_disassembly";
+                }
+                refs.push_back(item);
             }
             current += static_cast<duint>(instruction.instr_size);
         }

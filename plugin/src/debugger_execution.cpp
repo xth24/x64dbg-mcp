@@ -200,8 +200,14 @@ nlohmann::json filtered_breakpoint_response(const nlohmann::json& params, Emit e
     const auto records = get_breakpoint_records(type_filter);
 
     nlohmann::json breakpoints = nlohmann::json::array();
+    nlohmann::json type_counts = nlohmann::json::object();
     int matched = 0;
     int emitted = 0;
+    int enabled_total = 0;
+    int active_total = 0;
+    int resolved_total = 0;
+    int unresolved_total = 0;
+    bool has_resolved_state = false;
     for (const auto& record : records) {
         if (!breakpoint_matches(record, modules, enabled_only, active_only, module_filter)) {
             continue;
@@ -209,6 +215,21 @@ nlohmann::json filtered_breakpoint_response(const nlohmann::json& params, Emit e
         const auto item = emit(record, modules);
         if (item.is_null()) {
             continue;
+        }
+        type_counts[record.type] = type_counts.value(record.type, 0) + 1;
+        if (record.bp.enabled) {
+            ++enabled_total;
+        }
+        if (record.bp.active) {
+            ++active_total;
+        }
+        if (item.contains("resolved") && item["resolved"].is_boolean()) {
+            has_resolved_state = true;
+            if (item["resolved"].template get<bool>()) {
+                ++resolved_total;
+            } else {
+                ++unresolved_total;
+            }
         }
         if (matched++ < offset) {
             continue;
@@ -219,12 +240,24 @@ nlohmann::json filtered_breakpoint_response(const nlohmann::json& params, Emit e
         breakpoints.push_back(item);
     }
 
+    nlohmann::json summary = {
+        {"matched_total", matched},
+        {"enabled_total", enabled_total},
+        {"active_total", active_total},
+        {"type_counts", type_counts},
+    };
+    if (has_resolved_state) {
+        summary["resolved_total"] = resolved_total;
+        summary["unresolved_total"] = unresolved_total;
+    }
+
     return {
         {"total", matched},
         {"offset", offset},
         {"limit", limit},
         {"count", breakpoints.size()},
         {"truncated", matched > offset + static_cast<int>(breakpoints.size())},
+        {"summary", summary},
         {"breakpoints", breakpoints},
     };
 }

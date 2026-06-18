@@ -1,10 +1,13 @@
 #include "debugger_tools.h"
 
+#include "import_utils.h"
 #include "instruction_utils.h"
 #include "json_helpers.h"
 #include "memory_utils.h"
 #include "module_utils.h"
 #include "sdk.h"
+
+#include <optional>
 
 namespace {
 
@@ -50,7 +53,7 @@ nlohmann::json address_context_json(duint address) {
     return out;
 }
 
-nlohmann::json pointer_read_json(duint address) {
+nlohmann::json pointer_read_json(duint address, const Script::Module::ModuleInfo* owner_module) {
     duint value = 0;
     duint read = 0;
     if (!Script::Memory::Read(address, &value, sizeof(value), &read) || read != sizeof(value)) {
@@ -71,14 +74,28 @@ nlohmann::json pointer_read_json(duint address) {
     if (value != 0) {
         out["target"] = address_context_json(value);
     }
+    out["pointer_classification"] = classify_pointer_value(value, owner_module);
     return out;
+}
+
+std::optional<Script::Module::ModuleInfo> pointer_owner_module(const nlohmann::json& params, duint address) {
+    const std::string owner_module = optional_string(params, "owner_module");
+    if (!owner_module.empty()) {
+        const auto module = find_module_by_name(owner_module);
+        if (!module) {
+            throw ApiError("module_not_found", "Owner module was not found: " + owner_module);
+        }
+        return module;
+    }
+    return find_module_at(address);
 }
 
 } // namespace
 
 nlohmann::json tool_read_pointer(const nlohmann::json& params) {
     const duint address = parse_address(params, "address");
-    return pointer_read_json(address);
+    const auto owner = pointer_owner_module(params, address);
+    return pointer_read_json(address, owner ? &*owner : nullptr);
 }
 
 nlohmann::json tool_deref_chain(const nlohmann::json& params) {
@@ -89,7 +106,8 @@ nlohmann::json tool_deref_chain(const nlohmann::json& params) {
     nlohmann::json steps = nlohmann::json::array();
     std::string stop_reason;
     for (int i = 0; i < depth; ++i) {
-        nlohmann::json step = pointer_read_json(address);
+        const auto owner = find_module_at(address);
+        nlohmann::json step = pointer_read_json(address, owner ? &*owner : nullptr);
         step["depth"] = i;
         steps.push_back(step);
         if (!steps.back().value("readable", false)) {
@@ -148,7 +166,8 @@ nlohmann::json tool_inspect_address(const nlohmann::json& params) {
     out["breakpoint_type"] = breakpoint_type_name(DbgGetBpxTypeAt(address));
     out["xref_count"] = static_cast<unsigned long long>(DbgGetXrefCountAt(address));
     out["xref_type"] = xref_type_name(DbgGetXrefTypeAt(address));
-    out["pointer"] = pointer_read_json(address);
+    const auto owner = pointer_owner_module(params, address);
+    out["pointer"] = pointer_read_json(address, owner ? &*owner : nullptr);
     if (data_only) {
         out["instruction_skipped"] = true;
         out["instruction"] = nullptr;
