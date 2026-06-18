@@ -74,6 +74,7 @@ set(SOURCES
     src/debugger_metadata.cpp
     src/debugger_pe.cpp
     src/debugger_re.cpp
+    src/debugger_stack.cpp
     src/dispatcher.cpp
     src/import_utils.cpp
     src/instruction_utils.cpp

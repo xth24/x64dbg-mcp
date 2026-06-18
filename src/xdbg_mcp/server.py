@@ -81,6 +81,9 @@ def create_server():
                 "inspect_instruction",
                 "read_pointer",
                 "deref_chain",
+                "inspect_stack",
+                "inspect_call_args",
+                "find_pointers_to_range",
                 "list_breakpoints",
                 "resolve_breakpoints",
                 "list_unresolved_breakpoints",
@@ -126,7 +129,9 @@ def create_server():
             ],
             "notes": [
                 "Prefer get_snapshot for debugger state and inspect_address for one-address orientation.",
+                "Use inspect_stack and inspect_call_args when stopped around calls or import thunks.",
                 "Use find_strings, list_iat, and analyze_linear_block before manual range walking.",
+                "Use find_pointers_to_range for data references that code xref scans miss.",
                 "Broad analysis tools expose limit/max_instructions; lower limit first on system modules.",
                 "For managed modules with non-executable CLR stubs, pass include_readonly_code_like_sections to reference scanners.",
                 "Address parameters accept x64dbg expressions directly, including cip and module+offset forms.",
@@ -400,6 +405,65 @@ def create_server():
     def deref_chain(address: str, depth: int = 4, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Follow pointer-sized reads until null, unreadable memory, or max depth."""
         return _result("deref_chain", {"address": address, "depth": depth}, session_id=session_id, arch=arch)
+
+    @mcp.tool()
+    def inspect_stack(address: str | None = None, slots: int = 32, include_strings: bool = True, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+        """Annotate stack slots as pointers, strings, symbols, modules, and possible return addresses."""
+        params: dict[str, object] = {"slots": slots, "include_strings": include_strings}
+        if address:
+            params["address"] = address
+        return _result("inspect_stack", params, session_id=session_id, arch=arch)
+
+    @mcp.tool()
+    def inspect_call_args(
+        address: str | None = None,
+        count: int = 6,
+        convention: Literal["auto", "cdecl", "stdcall", "thiscall", "fastcall", "windows_x64"] = "auto",
+        stack_mode: Literal["callee", "before_call"] = "callee",
+        include_strings: bool = True,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Annotate likely call arguments from current registers and stack slots."""
+        params: dict[str, object] = {
+            "count": count,
+            "convention": convention,
+            "stack_mode": stack_mode,
+            "include_strings": include_strings,
+        }
+        if address:
+            params["address"] = address
+        return _result("inspect_call_args", params, session_id=session_id, arch=arch)
+
+    @mcp.tool()
+    def find_pointers_to_range(
+        target_start: str,
+        target_size: str,
+        scan_module: str | None = None,
+        scan_start: str | None = None,
+        scan_size: str | None = None,
+        include_system: bool = False,
+        aligned_only: bool = True,
+        limit: int = 500,
+        max_scan_bytes: int = 64 * 1024 * 1024,
+        session_id: str | None = None,
+        arch: Literal["x64", "x32"] | None = None,
+    ) -> dict:
+        """Scan readable memory for pointer-sized values into a target range."""
+        params: dict[str, object] = {
+            "target_start": target_start,
+            "target_size": target_size,
+            "include_system": include_system,
+            "aligned_only": aligned_only,
+            "limit": limit,
+            "max_scan_bytes": max_scan_bytes,
+        }
+        if scan_module:
+            params["scan_module"] = scan_module
+        elif scan_start and scan_size:
+            params["scan_start"] = scan_start
+            params["scan_size"] = scan_size
+        return _result("find_pointers_to_range", params, session_id=session_id, arch=arch, timeout_ms=30000)
 
     @mcp.tool()
     def run(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
