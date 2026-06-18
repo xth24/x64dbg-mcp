@@ -113,6 +113,51 @@ nlohmann::json wait_for_pause(int timeout_ms, int poll_ms, int instruction_count
     return out;
 }
 
+nlohmann::json wait_for_target_or_pause(duint target, int timeout_ms, int poll_ms, int instruction_count) {
+    const ULONGLONG start = GetTickCount64();
+    const auto timeout = static_cast<ULONGLONG>(timeout_ms);
+    bool saw_running = DbgIsRunning();
+
+    while (DbgIsDebugging()) {
+        const bool running = DbgIsRunning();
+        saw_running = saw_running || running;
+        const duint cip = Script::Register::Get(kInstructionPointer);
+        if (!running && (saw_running || cip == target)) {
+            nlohmann::json out = {
+                {"stopped", true},
+                {"timed_out", false},
+                {"saw_running", saw_running},
+                {"elapsed_ms", elapsed_since(start)},
+                {"status", tool_get_status({})},
+                {"snapshot", tool_get_snapshot({{"instruction_count", instruction_count}})},
+            };
+            return out;
+        }
+
+        const ULONGLONG elapsed = elapsed_since(start);
+        if (elapsed >= timeout) {
+            return {
+                {"stopped", false},
+                {"timed_out", true},
+                {"saw_running", saw_running},
+                {"elapsed_ms", elapsed},
+                {"status", tool_get_status({})},
+            };
+        }
+        const ULONGLONG remaining = timeout - elapsed;
+        Sleep(static_cast<DWORD>(std::min<ULONGLONG>(static_cast<ULONGLONG>(poll_ms), remaining)));
+    }
+
+    return {
+        {"stopped", false},
+        {"timed_out", false},
+        {"debugging", false},
+        {"saw_running", saw_running},
+        {"elapsed_ms", elapsed_since(start)},
+        {"status", tool_get_status({})},
+    };
+}
+
 nlohmann::json memory_breakpoint_json(const BRIDGEBP& bp) {
     return {
         {"type", "memory"},
@@ -201,8 +246,14 @@ nlohmann::json tool_run_until(const nlohmann::json& params) {
         throw ApiError("debugger_error", "Failed to set run_until software breakpoint.");
     }
 
-    Script::Debug::Run();
-    nlohmann::json wait = wait_for_pause(timeout_ms, poll_ms, instruction_count);
+    const bool run_queued = DbgCmdExec("run");
+    if (!run_queued) {
+        if (temporary && !existed) {
+            Script::Debug::DeleteBreakpoint(address);
+        }
+        throw ApiError("debugger_error", "Failed to queue run command for run_until.");
+    }
+    nlohmann::json wait = wait_for_target_or_pause(address, timeout_ms, poll_ms, instruction_count);
 
     bool hit = false;
     if (DbgIsDebugging() && !DbgIsRunning()) {
@@ -222,6 +273,7 @@ nlohmann::json tool_run_until(const nlohmann::json& params) {
         {"address", hex_value(address)},
         {"hit", hit},
         {"temporary", temporary},
+        {"run_queued", run_queued},
         {"breakpoint_existed", existed},
         {"breakpoint_set", breakpoint_set},
         {"breakpoint_remove_attempted", remove_attempted},
@@ -251,18 +303,34 @@ nlohmann::json tool_wait_for_module(const nlohmann::json& params) {
     const bool pause_on_found = parse_bool(params, "pause_on_found", true);
     const ULONGLONG start = GetTickCount64();
 
+    bool run_queued = false;
     if (run_debuggee && !DbgIsRunning() && !safe_find_module_by_name(module_name)) {
-        Script::Debug::Run();
+        run_queued = DbgCmdExec("run");
+        if (!run_queued) {
+            return {
+                {"action", "wait_for_module"},
+                {"module", module_name},
+                {"found", false},
+                {"timed_out", false},
+                {"run_queued", false},
+                {"reason", "run_queue_failed"},
+                {"elapsed_ms", elapsed_since(start)},
+                {"status", tool_get_status({})},
+            };
+        }
     }
 
     while (DbgIsDebugging()) {
         if (const auto module = safe_find_module_by_name(module_name)) {
             bool pause_requested = false;
+            bool pause_queued = false;
             nlohmann::json pause_wait = nullptr;
             if (pause_on_found && DbgIsRunning()) {
                 pause_requested = true;
-                Script::Debug::Pause();
-                pause_wait = wait_for_pause(2000, 25, instruction_count);
+                pause_queued = DbgCmdExec("pause");
+                pause_wait = pause_queued
+                    ? wait_for_pause(2000, 25, instruction_count)
+                    : nlohmann::json({{"stopped", false}, {"timed_out", false}, {"reason", "pause_queue_failed"}});
             }
             nlohmann::json out = {
                 {"action", "wait_for_module"},
@@ -271,7 +339,9 @@ nlohmann::json tool_wait_for_module(const nlohmann::json& params) {
                 {"timed_out", false},
                 {"elapsed_ms", elapsed_since(start)},
                 {"loaded_module", module_info_json(*module)},
+                {"run_queued", run_queued},
                 {"pause_requested", pause_requested},
+                {"pause_queued", pause_queued},
                 {"pause_wait", pause_wait},
                 {"status", tool_get_status({})},
             };
@@ -288,6 +358,7 @@ nlohmann::json tool_wait_for_module(const nlohmann::json& params) {
                 {"module", module_name},
                 {"found", false},
                 {"timed_out", true},
+                {"run_queued", run_queued},
                 {"elapsed_ms", elapsed},
                 {"status", tool_get_status({})},
             };
@@ -302,6 +373,7 @@ nlohmann::json tool_wait_for_module(const nlohmann::json& params) {
         {"found", false},
         {"timed_out", false},
         {"debugging", false},
+        {"run_queued", run_queued},
         {"elapsed_ms", elapsed_since(start)},
         {"status", tool_get_status({})},
     };

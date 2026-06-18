@@ -265,18 +265,30 @@ nlohmann::json filtered_breakpoint_response(const nlohmann::json& params, Emit e
 } // namespace
 
 nlohmann::json tool_run(const nlohmann::json&) {
-    Script::Debug::Run();
-    return ok_status("run", true);
+    const bool queued = DbgCmdExec("run");
+    nlohmann::json result = ok_status("run", queued);
+    result["queued"] = queued;
+    result["command"] = "run";
+    result["status"] = tool_get_status({});
+    return result;
 }
 
 nlohmann::json tool_pause(const nlohmann::json&) {
-    Script::Debug::Pause();
-    return ok_status("pause", true);
+    const bool queued = DbgCmdExec("pause");
+    nlohmann::json result = ok_status("pause", queued);
+    result["queued"] = queued;
+    result["command"] = "pause";
+    result["status"] = tool_get_status({});
+    return result;
 }
 
 nlohmann::json tool_stop(const nlohmann::json&) {
-    Script::Debug::Stop();
-    return ok_status("stop", true);
+    const bool queued = DbgCmdExec("stop");
+    nlohmann::json result = ok_status("stop", queued);
+    result["queued"] = queued;
+    result["command"] = "stop";
+    result["status"] = tool_get_status({});
+    return result;
 }
 
 nlohmann::json tool_step(const nlohmann::json& params) {

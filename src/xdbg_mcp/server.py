@@ -148,6 +148,7 @@ def create_server():
                 "Address parameters accept x64dbg expressions directly, including cip and module+offset forms.",
                 "Use list_unresolved_breakpoints when persisted module breakpoints do not bind yet.",
                 "Use run_until and wait_for_module with explicit timeouts; they return timed_out instead of waiting forever.",
+                "run, pause, and stop queue debugger commands and return immediately; call wait_for_pause when a paused context is expected next.",
                 "Use wait_for_pause after run or manual debugger interaction before inspecting paused context.",
                 "Use set_breakpoint_options for conditions, logging, commands, names, singleshot, silent, and fast-resume flags.",
                 "Use memory breakpoints for data access/watchpoint cases when four hardware slots are not enough.",
@@ -525,17 +526,17 @@ def create_server():
 
     @mcp.tool()
     def run(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
-        """Resume debuggee execution."""
+        """Queue debuggee execution resume and return immediately."""
         return _result("run", session_id=session_id, arch=arch)
 
     @mcp.tool()
     def pause(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
-        """Pause debuggee execution."""
+        """Queue debuggee pause and return immediately."""
         return _result("pause", session_id=session_id, arch=arch)
 
     @mcp.tool()
     def stop(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
-        """Stop the current debugging session."""
+        """Queue stop for the current debugging session and return immediately."""
         return _result("stop", session_id=session_id, arch=arch)
 
     @mcp.tool()
