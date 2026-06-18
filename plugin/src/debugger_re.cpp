@@ -257,7 +257,7 @@ nlohmann::json tool_find_strings(const nlohmann::json& params) {
     const bool ascii = parse_bool(params, "ascii", true);
     const bool unicode = parse_bool(params, "unicode", true);
     const int min_length = parse_int(params, "min_length", 4, 1, 1024);
-    const int limit = parse_int(params, "limit", 500, 1, 10000);
+    const int limit = parse_int(params, "limit", 100, 1, 10000);
     const std::string contains = optional_string(params, "contains");
 
     nlohmann::json hits = nlohmann::json::array();
@@ -306,7 +306,7 @@ nlohmann::json tool_list_calls_in_range(const nlohmann::json& params) {
     const duint start = parse_address(params, "start");
     const duint size = parse_address(params, "size");
     const int max_instructions = parse_int(params, "max_instructions", 512, 1, 20000);
-    const int limit = parse_int(params, "limit", 200, 1, 5000);
+    const int limit = parse_int(params, "limit", 100, 1, 5000);
     if (size > static_cast<duint>(64ull * 1024ull * 1024ull)) {
         throw ApiError("range_too_large", "Call extraction ranges are capped at 64 MiB per call.");
     }
@@ -316,7 +316,7 @@ nlohmann::json tool_list_calls_in_range(const nlohmann::json& params) {
 nlohmann::json tool_list_calls_in_function(const nlohmann::json& params) {
     const duint address = parse_address(params, "address");
     const int max_instructions = parse_int(params, "max_instructions", 1000, 1, 20000);
-    const int limit = parse_int(params, "limit", 200, 1, 5000);
+    const int limit = parse_int(params, "limit", 100, 1, 5000);
     duint start = 0;
     duint end = 0;
     duint instruction_count = 0;
@@ -335,7 +335,7 @@ nlohmann::json tool_list_calls_in_function(const nlohmann::json& params) {
 nlohmann::json tool_analyze_function(const nlohmann::json& params) {
     const duint address = parse_address(params, "address");
     const int max_instructions = parse_int(params, "max_instructions", 1000, 1, 20000);
-    const int call_limit = parse_int(params, "call_limit", 200, 1, 5000);
+    const int call_limit = parse_int(params, "call_limit", 100, 1, 5000);
     duint start = 0;
     duint end = 0;
     duint instruction_count = 0;
@@ -402,8 +402,8 @@ nlohmann::json tool_snapshot_break_context(const nlohmann::json& params) {
         return result;
     }
 
-    const int instruction_count = parse_int(params, "instruction_count", 8, 1, 32);
-    const int stack_slots = parse_int(params, "stack_slots", 8, 0, 64);
+    const int instruction_count = parse_int(params, "instruction_count", 4, 1, 32);
+    const int stack_slots = parse_int(params, "stack_slots", 4, 0, 64);
     const duint cip = Script::Register::Get(kInstructionPointer);
     const duint csp = Script::Register::Get(kStackPointer);
     result["debugging"] = true;

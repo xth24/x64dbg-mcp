@@ -341,7 +341,7 @@ nlohmann::json tool_inspect_clr_metadata(const nlohmann::json& params) {
 nlohmann::json tool_list_iat(const nlohmann::json& params) {
     const std::string module_name = required_string(params, "module");
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const int limit = parse_int(params, "limit", 100, 1, 50000);
     const auto module = find_module_by_name(module_name);
     if (!module) {
         throw ApiError("module_not_found", "Module was not found: " + module_name);

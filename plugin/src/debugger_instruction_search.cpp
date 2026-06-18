@@ -175,8 +175,8 @@ nlohmann::json tool_find_instructions(const nlohmann::json& params) {
     const bool case_sensitive = parse_bool(params, "case_sensitive", false);
     const bool executable_only = parse_bool(params, "executable_only", true);
     const bool include_details = parse_bool(params, "include_details", false);
-    const int max_instructions = parse_int(params, "max_instructions", 50000, 1, 500000);
-    const int limit = parse_int(params, "limit", 500, 1, 10000);
+    const int max_instructions = parse_int(params, "max_instructions", 20000, 1, 500000);
+    const int limit = parse_int(params, "limit", 100, 1, 10000);
 
     nlohmann::json hits = nlohmann::json::array();
     int decode_attempts = 0;

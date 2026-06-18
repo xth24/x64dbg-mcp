@@ -95,28 +95,63 @@ std::optional<Script::Module::ModuleInfo> find_loaded_module_at(
     return std::nullopt;
 }
 
-nlohmann::json breakpoint_json(const BreakpointRecord& record) {
-    const BRIDGEBP& bp = record.bp;
+void put_non_empty(nlohmann::json& out, const char* key, const char* value) {
+    if (value && value[0] != '\0') {
+        out[key] = value;
+    }
+}
+
+nlohmann::json module_summary_json(const Script::Module::ModuleInfo& module, bool compact) {
+    if (!compact) {
+        return module_info_json(module);
+    }
     return {
+        {"name", module.name},
+        {"base", hex_value(module.base)},
+        {"size", hex_value(module.size)},
+    };
+}
+
+nlohmann::json breakpoint_json(const BreakpointRecord& record, bool compact) {
+    const BRIDGEBP& bp = record.bp;
+    nlohmann::json out = {
         {"type", record.type},
         {"address", hex_value(bp.addr)},
         {"enabled", bp.enabled != 0},
         {"active", bp.active != 0},
-        {"single_shot", bp.singleshoot != 0},
-        {"module", bp.mod},
-        {"name", bp.name},
-        {"hit_count", bp.hitCount},
-        {"silent", bp.silent != 0},
-        {"fast_resume", bp.fastResume != 0},
-        {"slot", bp.slot},
-        {"type_ex", bp.typeEx},
-        {"hardware_size", bp.hwSize},
-        {"break_condition", bp.breakCondition},
-        {"log_text", bp.logText},
-        {"log_condition", bp.logCondition},
-        {"command_text", bp.commandText},
-        {"command_condition", bp.commandCondition},
     };
+    if (compact) {
+        put_non_empty(out, "module", bp.mod);
+        put_non_empty(out, "name", bp.name);
+        if (bp.hitCount != 0) out["hit_count"] = bp.hitCount;
+        if (bp.singleshoot) out["single_shot"] = true;
+        if (bp.silent) out["silent"] = true;
+        if (bp.fastResume) out["fast_resume"] = true;
+        if (bp.slot != 0) out["slot"] = bp.slot;
+        if (bp.typeEx != 0) out["type_ex"] = bp.typeEx;
+        if (bp.hwSize != 0) out["hardware_size"] = bp.hwSize;
+        put_non_empty(out, "break_condition", bp.breakCondition);
+        put_non_empty(out, "log_text", bp.logText);
+        put_non_empty(out, "log_condition", bp.logCondition);
+        put_non_empty(out, "command_text", bp.commandText);
+        put_non_empty(out, "command_condition", bp.commandCondition);
+        return out;
+    }
+    out["single_shot"] = bp.singleshoot != 0;
+    out["module"] = bp.mod;
+    out["name"] = bp.name;
+    out["hit_count"] = bp.hitCount;
+    out["silent"] = bp.silent != 0;
+    out["fast_resume"] = bp.fastResume != 0;
+    out["slot"] = bp.slot;
+    out["type_ex"] = bp.typeEx;
+    out["hardware_size"] = bp.hwSize;
+    out["break_condition"] = bp.breakCondition;
+    out["log_text"] = bp.logText;
+    out["log_condition"] = bp.logCondition;
+    out["command_text"] = bp.commandText;
+    out["command_condition"] = bp.commandCondition;
+    return out;
 }
 
 bool breakpoint_matches(
@@ -147,9 +182,10 @@ bool breakpoint_matches(
 
 nlohmann::json resolved_breakpoint_json(
     const BreakpointRecord& record,
-    const std::vector<Script::Module::ModuleInfo>& modules
+    const std::vector<Script::Module::ModuleInfo>& modules,
+    bool compact
 ) {
-    nlohmann::json out = breakpoint_json(record);
+    nlohmann::json out = breakpoint_json(record, compact);
     const BRIDGEBP& bp = record.bp;
     const std::string requested_module = bp.mod;
 
@@ -175,7 +211,7 @@ nlohmann::json resolved_breakpoint_json(
         out["resolved"] = false;
         out["reason"] = "rva_out_of_module";
         out["rva"] = hex_value(bp.addr);
-        out["loaded_module"] = module_info_json(*module);
+        out["loaded_module"] = module_summary_json(*module, compact);
         return out;
     }
     const duint rva = address_is_absolute ? bp.addr - module->base : bp.addr;
@@ -184,7 +220,7 @@ nlohmann::json resolved_breakpoint_json(
     out["address_kind"] = address_is_absolute ? "absolute" : "rva";
     out["absolute_address"] = hex_value(absolute);
     out["rva"] = hex_value(rva);
-    out["loaded_module"] = module_info_json(*module);
+    out["loaded_module"] = module_summary_json(*module, compact);
     return out;
 }
 
@@ -194,8 +230,9 @@ nlohmann::json filtered_breakpoint_response(const nlohmann::json& params, Emit e
     const std::string module_filter = optional_string(params, "module");
     const bool enabled_only = parse_bool(params, "enabled_only", false);
     const bool active_only = parse_bool(params, "active_only", false);
+    const bool compact = parse_bool(params, "compact", true);
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 500, 1, 5000);
+    const int limit = parse_int(params, "limit", 100, 1, 5000);
     const auto modules = get_loaded_modules_or_empty();
     const auto records = get_breakpoint_records(type_filter);
 
@@ -212,7 +249,7 @@ nlohmann::json filtered_breakpoint_response(const nlohmann::json& params, Emit e
         if (!breakpoint_matches(record, modules, enabled_only, active_only, module_filter)) {
             continue;
         }
-        const auto item = emit(record, modules);
+        const auto item = emit(record, modules, compact);
         if (item.is_null()) {
             continue;
         }
@@ -256,6 +293,7 @@ nlohmann::json filtered_breakpoint_response(const nlohmann::json& params, Emit e
         {"offset", offset},
         {"limit", limit},
         {"count", breakpoints.size()},
+        {"compact", compact},
         {"truncated", matched > offset + static_cast<int>(breakpoints.size())},
         {"summary", summary},
         {"breakpoints", breakpoints},
@@ -309,7 +347,7 @@ nlohmann::json tool_step(const nlohmann::json& params) {
 
     nlohmann::json result = ok_status("step", true);
     result["kind"] = kind;
-    result["snapshot"] = tool_get_snapshot({{"instruction_count", 8}});
+    result["snapshot"] = tool_get_snapshot({{"instruction_count", 4}});
     return result;
 }
 
@@ -374,19 +412,19 @@ nlohmann::json tool_remove_hardware_breakpoint(const nlohmann::json& params) {
 }
 
 nlohmann::json tool_list_breakpoints(const nlohmann::json& params) {
-    return filtered_breakpoint_response(params, [](const BreakpointRecord& record, const auto&) {
-        return breakpoint_json(record);
+    return filtered_breakpoint_response(params, [](const BreakpointRecord& record, const auto&, bool compact) {
+        return breakpoint_json(record, compact);
     });
 }
 
 nlohmann::json tool_resolve_breakpoints(const nlohmann::json& params) {
-    return filtered_breakpoint_response(params, [](const BreakpointRecord& record, const auto& modules) {
-        return resolved_breakpoint_json(record, modules);
+    return filtered_breakpoint_response(params, [](const BreakpointRecord& record, const auto& modules, bool compact) {
+        return resolved_breakpoint_json(record, modules, compact);
     });
 }
 
 nlohmann::json tool_list_unresolved_breakpoints(const nlohmann::json& params) {
-    return filtered_breakpoint_response(params, [](const BreakpointRecord& record, const auto& modules) -> nlohmann::json {
+    return filtered_breakpoint_response(params, [](const BreakpointRecord& record, const auto& modules, bool compact) -> nlohmann::json {
         const std::string requested_module = record.bp.mod;
         if (requested_module.empty()) {
             return nullptr;
@@ -394,7 +432,7 @@ nlohmann::json tool_list_unresolved_breakpoints(const nlohmann::json& params) {
         if (find_loaded_module_by_name(modules, requested_module)) {
             return nullptr;
         }
-        nlohmann::json out = breakpoint_json(record);
+        nlohmann::json out = breakpoint_json(record, compact);
         out["resolved"] = false;
         out["reason"] = "module_not_loaded";
         out["rva"] = hex_value(record.bp.addr);

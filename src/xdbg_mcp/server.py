@@ -13,6 +13,13 @@ from .winpipe import DebuggerBridge
 bridge = DebuggerBridge()
 binder = SessionBinder(bridge)
 
+DEFAULT_CONTEXT_INSTRUCTIONS = 4
+DEFAULT_LIST_LIMIT = 100
+DEFAULT_SYMBOL_LIMIT = 200
+DEFAULT_STACK_SLOTS = 12
+DEFAULT_BREAK_STACK_SLOTS = 4
+DEFAULT_SCAN_INSTRUCTIONS = 20000
+
 
 def _result(
     method: str,
@@ -44,97 +51,141 @@ def create_server():
     mcp = FastMCP("xdbg-mcp")
 
     @mcp.tool()
-    def get_capabilities() -> dict:
+    def get_capabilities(full: bool = False) -> dict:
         """Describe available xdbg-mcp tools and recommended agent workflow."""
+        read_only_tools = [
+            "health_check",
+            "get_status",
+            "get_bridge_info",
+            "get_snapshot",
+            "get_registers",
+            "read_memory",
+            "disassemble",
+            "parse_expression",
+            "evaluate_expressions",
+            "get_branch_destination",
+            "find_pattern",
+            "find_all_patterns",
+            "find_strings",
+            "find_instructions",
+            "list_calls_in_range",
+            "list_calls_in_function",
+            "analyze_function",
+            "analyze_linear_block",
+            "list_functions",
+            "find_references_to_range",
+            "find_references_to_module",
+            "inspect_import_thunk",
+            "snapshot_break_context",
+            "get_call_stack",
+            "get_symbol_at",
+            "get_string_at",
+            "get_xrefs",
+            "inspect_address",
+            "inspect_instruction",
+            "read_pointer",
+            "deref_chain",
+            "inspect_stack",
+            "inspect_call_args",
+            "find_pointers_to_range",
+            "list_breakpoints",
+            "resolve_breakpoints",
+            "list_unresolved_breakpoints",
+            "list_modules",
+            "get_module_at",
+            "list_module_sections",
+            "list_module_imports",
+            "list_module_exports",
+            "list_iat",
+            "inspect_pe_headers",
+            "inspect_clr_metadata",
+            "list_threads",
+            "get_memory_map",
+            "get_page_at",
+            "query_symbols",
+            "list_labels",
+            "wait_for_pause",
+        ]
+        mutating_tools = [
+            "set_register",
+            "write_memory",
+            "run",
+            "pause",
+            "stop",
+            "step",
+            "run_until",
+            "wait_for_module",
+            "set_breakpoint",
+            "remove_breakpoint",
+            "set_hardware_breakpoint",
+            "remove_hardware_breakpoint",
+            "set_breakpoint_options",
+            "set_memory_breakpoint",
+            "remove_memory_breakpoint",
+            "set_label",
+            "set_comment",
+            "execute_command",
+        ]
+        routing_tools = [
+            "list_debugger_sessions",
+            "bind_debugger_session",
+            "get_bound_debugger_session",
+            "unbind_debugger_session",
+        ]
+        recommended_start = [
+            "health_check",
+            "list_debugger_sessions",
+            "bind_debugger_session",
+            "get_status",
+            "get_snapshot",
+            "inspect_address",
+            "list_modules",
+        ]
+        if not full:
+            return {
+                "ok": True,
+                **version_info(),
+                "transport": "stdio MCP server to local debugger plugin over named pipes",
+                "recommended_start": recommended_start,
+                "tool_counts": {
+                    "read_only": len(read_only_tools),
+                    "mutating": len(mutating_tools),
+                    "routing": len(routing_tools),
+                },
+                "high_value_tools": [
+                    "inspect_address",
+                    "snapshot_break_context",
+                    "inspect_stack",
+                    "inspect_call_args",
+                    "find_instructions",
+                    "find_strings",
+                    "list_iat",
+                    "run_until",
+                    "wait_for_pause",
+                ],
+                "default_limits": {
+                    "lists": DEFAULT_LIST_LIMIT,
+                    "symbols": DEFAULT_SYMBOL_LIMIT,
+                    "snapshot_instructions": DEFAULT_CONTEXT_INSTRUCTIONS,
+                    "stack_slots": DEFAULT_STACK_SLOTS,
+                    "scan_instructions": DEFAULT_SCAN_INSTRUCTIONS,
+                },
+                "session_routing": "Call bind_debugger_session once; session_id or arch can still override a call.",
+                "details": "Call get_capabilities(full=True) for complete tool lists and notes.",
+            }
         return {
             "ok": True,
             **version_info(),
             "transport": "stdio MCP server to local debugger plugin over named pipes",
-            "recommended_start": ["health_check", "list_debugger_sessions", "bind_debugger_session", "get_status", "get_snapshot", "inspect_address", "list_modules"],
-            "read_only_tools": [
-                "health_check",
-                "get_status",
-                "get_bridge_info",
-                "get_snapshot",
-                "get_registers",
-                "read_memory",
-                "disassemble",
-                "parse_expression",
-                "evaluate_expressions",
-                "get_branch_destination",
-                "find_pattern",
-                "find_all_patterns",
-                "find_strings",
-                "find_instructions",
-                "list_calls_in_range",
-                "list_calls_in_function",
-                "analyze_function",
-                "analyze_linear_block",
-                "list_functions",
-                "find_references_to_range",
-                "find_references_to_module",
-                "inspect_import_thunk",
-                "snapshot_break_context",
-                "get_call_stack",
-                "get_symbol_at",
-                "get_string_at",
-                "get_xrefs",
-                "inspect_address",
-                "inspect_instruction",
-                "read_pointer",
-                "deref_chain",
-                "inspect_stack",
-                "inspect_call_args",
-                "find_pointers_to_range",
-                "list_breakpoints",
-                "resolve_breakpoints",
-                "list_unresolved_breakpoints",
-                "list_modules",
-                "get_module_at",
-                "list_module_sections",
-                "list_module_imports",
-                "list_module_exports",
-                "list_iat",
-                "inspect_pe_headers",
-                "inspect_clr_metadata",
-                "list_threads",
-                "get_memory_map",
-                "get_page_at",
-                "query_symbols",
-                "list_labels",
-                "wait_for_pause",
-            ],
-            "mutating_tools": [
-                "set_register",
-                "write_memory",
-                "run",
-                "pause",
-                "stop",
-                "step",
-                "run_until",
-                "wait_for_module",
-                "set_breakpoint",
-                "remove_breakpoint",
-                "set_hardware_breakpoint",
-                "remove_hardware_breakpoint",
-                "set_breakpoint_options",
-                "set_memory_breakpoint",
-                "remove_memory_breakpoint",
-                "set_label",
-                "set_comment",
-                "execute_command",
-            ],
+            "recommended_start": recommended_start,
+            "read_only_tools": read_only_tools,
+            "mutating_tools": mutating_tools,
             "session_routing": [
                 "Call bind_debugger_session once to make later calls use that debugger session by default.",
                 "Passing session_id or arch to any debugger tool still overrides the binding for that call.",
                 "When no session is bound, tools fall back to the newest discovered session.",
             ],
-            "routing_tools": [
-                "list_debugger_sessions",
-                "bind_debugger_session",
-                "get_bound_debugger_session",
-                "unbind_debugger_session",
-            ],
+            "routing_tools": routing_tools,
             "notes": [
                 "Prefer get_snapshot for debugger state and inspect_address for one-address orientation.",
                 "Use inspect_stack and inspect_call_args when stopped around calls or import thunks.",
@@ -206,7 +257,7 @@ def create_server():
         return _result("get_bridge_info", session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def get_snapshot(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None, instruction_count: int = 8) -> dict:
+    def get_snapshot(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None, instruction_count: int = DEFAULT_CONTEXT_INSTRUCTIONS) -> dict:
         """Get a compact current-context snapshot: status, current module/symbol, registers, disassembly, and stack bytes."""
         return _result("get_snapshot", {"instruction_count": instruction_count}, session_id=session_id, arch=arch)
 
@@ -281,7 +332,7 @@ def create_server():
         unicode: bool = True,
         min_length: int = 4,
         contains: str | None = None,
-        limit: int = 500,
+        limit: int = DEFAULT_LIST_LIMIT,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
     ) -> dict:
@@ -312,8 +363,8 @@ def create_server():
         executable_only: bool = True,
         case_sensitive: bool = False,
         include_details: bool = False,
-        max_instructions: int = 50000,
-        limit: int = 500,
+        max_instructions: int = DEFAULT_SCAN_INSTRUCTIONS,
+        limit: int = DEFAULT_LIST_LIMIT,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
     ) -> dict:
@@ -337,17 +388,17 @@ def create_server():
         return _result("find_instructions", params, session_id=session_id, arch=arch, timeout_ms=30000)
 
     @mcp.tool()
-    def list_calls_in_range(start: str, size: str, max_instructions: int = 512, limit: int = 200, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def list_calls_in_range(start: str, size: str, max_instructions: int = 512, limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Extract calls, jumps, conditional jumps, and returns from a disassembly range."""
         return _result("list_calls_in_range", {"start": start, "size": size, "max_instructions": max_instructions, "limit": limit}, session_id=session_id, arch=arch, timeout_ms=15000)
 
     @mcp.tool()
-    def list_calls_in_function(address: str, max_instructions: int = 1000, limit: int = 200, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def list_calls_in_function(address: str, max_instructions: int = 1000, limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Extract calls and branches from the x64dbg-analyzed function containing address."""
         return _result("list_calls_in_function", {"address": address, "max_instructions": max_instructions, "limit": limit}, session_id=session_id, arch=arch, timeout_ms=15000)
 
     @mcp.tool()
-    def analyze_function(address: str, max_instructions: int = 1000, call_limit: int = 200, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def analyze_function(address: str, max_instructions: int = 1000, call_limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Summarize an x64dbg-analyzed function with bounds, context, and branch/call inventory."""
         return _result("analyze_function", {"address": address, "max_instructions": max_instructions, "call_limit": call_limit}, session_id=session_id, arch=arch, timeout_ms=15000)
 
@@ -357,7 +408,7 @@ def create_server():
         return _result("analyze_linear_block", {"address": address, "max_instructions": max_instructions, "include_instructions": include_instructions}, session_id=session_id, arch=arch, timeout_ms=15000)
 
     @mcp.tool()
-    def list_functions(module: str | None = None, offset: int = 0, limit: int = 500, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def list_functions(module: str | None = None, offset: int = 0, limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """List x64dbg-known functions with optional module filter and pagination."""
         return _result("list_functions", {"module": module, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 
@@ -366,8 +417,8 @@ def create_server():
         start: str,
         size: str,
         scan_module: str | None = None,
-        max_instructions: int = 50000,
-        limit: int = 500,
+        max_instructions: int = DEFAULT_SCAN_INSTRUCTIONS,
+        limit: int = DEFAULT_LIST_LIMIT,
         include_readonly_code_like_sections: bool = False,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
@@ -392,8 +443,8 @@ def create_server():
     def find_references_to_module(
         module: str,
         scan_module: str | None = None,
-        max_instructions: int = 50000,
-        limit: int = 500,
+        max_instructions: int = DEFAULT_SCAN_INSTRUCTIONS,
+        limit: int = DEFAULT_LIST_LIMIT,
         include_readonly_code_like_sections: bool = False,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
@@ -419,7 +470,7 @@ def create_server():
         return _result("inspect_import_thunk", {"address": address, "module": module}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def snapshot_break_context(instruction_count: int = 8, stack_slots: int = 8, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def snapshot_break_context(instruction_count: int = DEFAULT_CONTEXT_INSTRUCTIONS, stack_slots: int = DEFAULT_BREAK_STACK_SLOTS, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Get current paused/break context: snapshot, current inspection, stack slots, and call stack."""
         return _result("snapshot_break_context", {"instruction_count": instruction_count, "stack_slots": stack_slots}, session_id=session_id, arch=arch)
 
@@ -439,7 +490,7 @@ def create_server():
         return _result("get_string_at", {"address": address}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def get_xrefs(address: str, limit: int = 500, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def get_xrefs(address: str, limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """List known xrefs to an address or expression from x64dbg's analysis database."""
         return _result("get_xrefs", {"address": address, "limit": limit}, session_id=session_id, arch=arch)
 
@@ -464,7 +515,7 @@ def create_server():
         return _result("deref_chain", {"address": address, "depth": depth}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def inspect_stack(address: str | None = None, slots: int = 32, include_strings: bool = True, owner_module: str | None = None, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def inspect_stack(address: str | None = None, slots: int = DEFAULT_STACK_SLOTS, include_strings: bool = False, owner_module: str | None = None, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Annotate stack slots as pointers, strings, symbols, modules, and possible return addresses."""
         params: dict[str, object] = {"slots": slots, "include_strings": include_strings, "owner_module": owner_module}
         if address:
@@ -477,7 +528,7 @@ def create_server():
         count: int = 6,
         convention: Literal["auto", "cdecl", "stdcall", "thiscall", "fastcall", "windows_x64"] = "auto",
         stack_mode: Literal["callee", "before_call"] = "callee",
-        include_strings: bool = True,
+        include_strings: bool = False,
         owner_module: str | None = None,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
@@ -503,7 +554,7 @@ def create_server():
         scan_size: str | None = None,
         include_system: bool = False,
         aligned_only: bool = True,
-        limit: int = 500,
+        limit: int = DEFAULT_LIST_LIMIT,
         max_scan_bytes: int = 64 * 1024 * 1024,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
@@ -548,8 +599,8 @@ def create_server():
     def wait_for_pause(
         timeout_ms: int = 10000,
         poll_ms: int = 25,
-        instruction_count: int = 8,
-        include_context: bool = True,
+        instruction_count: int = DEFAULT_CONTEXT_INSTRUCTIONS,
+        include_context: bool = False,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
     ) -> dict:
@@ -574,7 +625,7 @@ def create_server():
         temporary: bool = True,
         keep_breakpoint_on_timeout: bool = False,
         poll_ms: int = 25,
-        instruction_count: int = 8,
+        instruction_count: int = DEFAULT_CONTEXT_INSTRUCTIONS,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
     ) -> dict:
@@ -601,7 +652,7 @@ def create_server():
         poll_ms: int = 100,
         run: bool = True,
         pause_on_found: bool = True,
-        instruction_count: int = 8,
+        instruction_count: int = DEFAULT_CONTEXT_INSTRUCTIONS,
         session_id: str | None = None,
         arch: Literal["x64", "x32"] | None = None,
     ) -> dict:
@@ -708,13 +759,14 @@ def create_server():
         enabled_only: bool = False,
         active_only: bool = False,
         module: str | None = None,
+        compact: bool = True,
         offset: int = 0,
-        limit: int = 500,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> dict:
         """List normal, hardware, memory, DLL, and exception breakpoints with filters and pagination."""
         return _result(
             "list_breakpoints",
-            {"type": type, "enabled_only": enabled_only, "active_only": active_only, "module": module, "offset": offset, "limit": limit},
+            {"type": type, "enabled_only": enabled_only, "active_only": active_only, "module": module, "compact": compact, "offset": offset, "limit": limit},
             session_id=session_id,
             arch=arch,
         )
@@ -727,13 +779,14 @@ def create_server():
         enabled_only: bool = False,
         active_only: bool = False,
         module: str | None = None,
+        compact: bool = True,
         offset: int = 0,
-        limit: int = 500,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> dict:
         """Resolve breakpoint module+rva records to absolute addresses when their module is loaded."""
         return _result(
             "resolve_breakpoints",
-            {"type": type, "enabled_only": enabled_only, "active_only": active_only, "module": module, "offset": offset, "limit": limit},
+            {"type": type, "enabled_only": enabled_only, "active_only": active_only, "module": module, "compact": compact, "offset": offset, "limit": limit},
             session_id=session_id,
             arch=arch,
         )
@@ -746,13 +799,14 @@ def create_server():
         enabled_only: bool = False,
         active_only: bool = False,
         module: str | None = None,
+        compact: bool = True,
         offset: int = 0,
-        limit: int = 500,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> dict:
         """List persisted module breakpoints whose target module is not currently loaded."""
         return _result(
             "list_unresolved_breakpoints",
-            {"type": type, "enabled_only": enabled_only, "active_only": active_only, "module": module, "offset": offset, "limit": limit},
+            {"type": type, "enabled_only": enabled_only, "active_only": active_only, "module": module, "compact": compact, "offset": offset, "limit": limit},
             session_id=session_id,
             arch=arch,
         )
@@ -765,7 +819,7 @@ def create_server():
         path_contains: str | None = None,
         non_system: bool = False,
         offset: int = 0,
-        limit: int = 200,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> dict:
         """List loaded modules with optional module, path, non-system, offset, and limit filters."""
         return _result(
@@ -786,17 +840,17 @@ def create_server():
         return _result("list_module_sections", {"module": module}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def list_module_imports(module: str, offset: int = 0, limit: int = 500, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def list_module_imports(module: str, offset: int = 0, limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """List imports for one loaded module with IAT addresses and pagination."""
         return _result("list_module_imports", {"module": module, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def list_module_exports(module: str, offset: int = 0, limit: int = 500, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def list_module_exports(module: str, offset: int = 0, limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """List exports for one loaded module with addresses, ordinals, forwarding, and pagination."""
         return _result("list_module_exports", {"module": module, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def list_iat(module: str, offset: int = 0, limit: int = 500, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def list_iat(module: str, offset: int = 0, limit: int = DEFAULT_LIST_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """List IAT entries with current pointer values and pointer classification."""
         return _result("list_iat", {"module": module, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 
@@ -825,7 +879,7 @@ def create_server():
         protect: str | None = None,
         readable_only: bool = False,
         offset: int = 0,
-        limit: int = 500,
+        limit: int = DEFAULT_LIST_LIMIT,
     ) -> dict:
         """List mapped memory pages with filters and pagination."""
         return _result(
@@ -841,12 +895,12 @@ def create_server():
         return _result("get_page_at", {"address": address}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def query_symbols(module: str, offset: int = 0, limit: int = 5000, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
+    def query_symbols(module: str, offset: int = 0, limit: int = DEFAULT_SYMBOL_LIMIT, session_id: str | None = None, arch: Literal["x64", "x32"] | None = None) -> dict:
         """Query symbols for one module. Call list_modules first when unsure of the module name."""
         return _result("query_symbols", {"module": module, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 
     @mcp.tool()
-    def list_labels(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None, module: str | None = None, contains: str | None = None, offset: int = 0, limit: int = 500) -> dict:
+    def list_labels(session_id: str | None = None, arch: Literal["x64", "x32"] | None = None, module: str | None = None, contains: str | None = None, offset: int = 0, limit: int = DEFAULT_LIST_LIMIT) -> dict:
         """List labels currently known to x64dbg/x32dbg with filters and pagination."""
         return _result("list_labels", {"module": module, "contains": contains, "offset": offset, "limit": limit}, session_id=session_id, arch=arch)
 

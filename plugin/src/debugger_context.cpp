@@ -163,7 +163,7 @@ nlohmann::json tool_get_snapshot(const nlohmann::json& params) {
         return {{"status", tool_get_status(params)}};
     }
 
-    const int count = parse_int(params, "instruction_count", 8, 1, 32);
+    const int count = parse_int(params, "instruction_count", 4, 1, 32);
     const duint cip = Script::Register::Get(kInstructionPointer);
     const duint csp = Script::Register::Get(kStackPointer);
     nlohmann::json current = {

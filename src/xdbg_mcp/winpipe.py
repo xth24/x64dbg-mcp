@@ -235,5 +235,5 @@ class DebuggerBridge:
             "params": params,
         }
         response = send_pipe_request(session.pipe, request, timeout_ms=timeout_ms or self.default_timeout_ms)
-        response["session"] = session.public()
+        response["session"] = session.compact_public()
         return response

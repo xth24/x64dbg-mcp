@@ -290,7 +290,7 @@ nlohmann::json tool_analyze_linear_block(const nlohmann::json& params) {
 nlohmann::json tool_list_functions(const nlohmann::json& params) {
     const std::string module_filter = optional_string(params, "module");
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const int limit = parse_int(params, "limit", 100, 1, 50000);
 
     ListInfo list{};
     if (!Script::Function::GetList(&list) || !list.data) {
@@ -340,8 +340,8 @@ nlohmann::json tool_list_functions(const nlohmann::json& params) {
 nlohmann::json tool_find_references_to_range(const nlohmann::json& params) {
     const duint target_start = parse_address(params, "start");
     const duint target_size = parse_address(params, "size");
-    const int max_instructions = parse_int(params, "max_instructions", 50000, 1, 500000);
-    const int limit = parse_int(params, "limit", 500, 1, 10000);
+    const int max_instructions = parse_int(params, "max_instructions", 20000, 1, 500000);
+    const int limit = parse_int(params, "limit", 100, 1, 10000);
     const bool include_readonly_code_like_sections = parse_bool(params, "include_readonly_code_like_sections", false);
     const auto ranges = reference_scan_ranges(params);
 

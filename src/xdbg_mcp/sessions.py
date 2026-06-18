@@ -43,6 +43,13 @@ class DebuggerSession:
             "protocol_version": self.protocol_version,
         }
 
+    def compact_public(self) -> dict[str, object]:
+        return {
+            "session_id": self.session_id,
+            "arch": self.arch,
+            "pid": self.pid,
+        }
+
 
 def session_root() -> Path:
     override = os.getenv("XDBG_MCP_SESSION_DIR")

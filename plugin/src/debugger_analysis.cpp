@@ -241,7 +241,7 @@ nlohmann::json tool_get_string_at(const nlohmann::json& params) {
 
 nlohmann::json tool_get_xrefs(const nlohmann::json& params) {
     const duint address = parse_address(params, "address");
-    const int limit = parse_int(params, "limit", 500, 1, 5000);
+    const int limit = parse_int(params, "limit", 100, 1, 5000);
 
     XREF_INFO info{};
     if (!DbgXrefGet(address, &info)) {

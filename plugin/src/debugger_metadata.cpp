@@ -30,7 +30,7 @@ nlohmann::json tool_list_modules(const nlohmann::json& params) {
     const std::string path_filter = optional_string(params, "path_contains");
     const bool non_system = parse_bool(params, "non_system", false);
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 200, 1, 5000);
+    const int limit = parse_int(params, "limit", 100, 1, 5000);
 
     const auto modules = get_module_list();
     nlohmann::json out = nlohmann::json::array();
@@ -114,7 +114,7 @@ nlohmann::json tool_list_module_sections(const nlohmann::json& params) {
 nlohmann::json tool_list_module_exports(const nlohmann::json& params) {
     const std::string module_name = required_string(params, "module");
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const int limit = parse_int(params, "limit", 100, 1, 50000);
     const auto module = find_module_by_name(module_name);
     if (!module) {
         throw ApiError("module_not_found", "Module was not found: " + module_name);
@@ -161,7 +161,7 @@ nlohmann::json tool_list_module_exports(const nlohmann::json& params) {
 nlohmann::json tool_list_module_imports(const nlohmann::json& params) {
     const std::string module_name = required_string(params, "module");
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const int limit = parse_int(params, "limit", 100, 1, 50000);
     const auto module = find_module_by_name(module_name);
     if (!module) {
         throw ApiError("module_not_found", "Module was not found: " + module_name);
@@ -237,7 +237,7 @@ nlohmann::json tool_list_threads(const nlohmann::json&) {
 
 nlohmann::json tool_get_memory_map(const nlohmann::json& params) {
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const int limit = parse_int(params, "limit", 100, 1, 50000);
     const std::string module_filter = optional_string(params, "module");
     const std::string state_filter = optional_string(params, "state");
     const std::string type_filter = optional_string(params, "type");
@@ -303,7 +303,7 @@ nlohmann::json tool_get_page_at(const nlohmann::json& params) {
 nlohmann::json tool_query_symbols(const nlohmann::json& params) {
     const std::string module = required_string(params, "module");
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 5000, 1, 50000);
+    const int limit = parse_int(params, "limit", 200, 1, 50000);
 
     ListInfo list{};
     if (!Script::Symbol::GetList(&list) || !list.data) {
@@ -351,7 +351,7 @@ nlohmann::json tool_query_symbols(const nlohmann::json& params) {
 
 nlohmann::json tool_list_labels(const nlohmann::json& params) {
     const int offset = parse_int(params, "offset", 0, 0, 100000000);
-    const int limit = parse_int(params, "limit", 500, 1, 50000);
+    const int limit = parse_int(params, "limit", 100, 1, 50000);
     const std::string module_filter = optional_string(params, "module");
     const std::string contains = optional_string(params, "contains");
     ListInfo list{};

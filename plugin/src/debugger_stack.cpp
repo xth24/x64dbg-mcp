@@ -226,8 +226,8 @@ nlohmann::json tool_inspect_stack(const nlohmann::json& params) {
     const std::string address_expr = optional_string(params, "address");
     const duint csp = Script::Register::Get(kStackPointer);
     const duint start = address_expr.empty() ? csp : parse_address(params, "address");
-    const int slots = parse_int(params, "slots", 32, 1, 512);
-    const bool include_strings = parse_bool(params, "include_strings", true);
+    const int slots = parse_int(params, "slots", 12, 1, 512);
+    const bool include_strings = parse_bool(params, "include_strings", false);
     const auto owner_module = owner_module_from_params(params);
 
     nlohmann::json out = nlohmann::json::array();
@@ -264,7 +264,7 @@ nlohmann::json tool_inspect_call_args(const nlohmann::json& params) {
     const duint csp = Script::Register::Get(kStackPointer);
     const duint address = address_expr.empty() ? cip : parse_address(params, "address");
     const int count = parse_int(params, "count", 6, 0, 32);
-    const bool include_strings = parse_bool(params, "include_strings", true);
+    const bool include_strings = parse_bool(params, "include_strings", false);
     const std::string stack_mode = optional_string(params, "stack_mode", "callee");
     const bool before_call = stack_mode == "before_call";
     const std::string convention = optional_string(params, "convention", "auto");
@@ -331,7 +331,7 @@ nlohmann::json tool_inspect_call_args(const nlohmann::json& params) {
 nlohmann::json tool_find_pointers_to_range(const nlohmann::json& params) {
     const duint target_start = parse_address(params, "target_start");
     const duint target_size = parse_address(params, "target_size");
-    const int limit = parse_int(params, "limit", 500, 1, 10000);
+    const int limit = parse_int(params, "limit", 100, 1, 10000);
     const int max_scan_bytes_int = parse_int(params, "max_scan_bytes", 64 * 1024 * 1024, 1, 512 * 1024 * 1024);
     const duint max_scan_bytes = static_cast<duint>(max_scan_bytes_int);
     const bool aligned_only = parse_bool(params, "aligned_only", true);

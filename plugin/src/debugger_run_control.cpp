@@ -207,12 +207,12 @@ nlohmann::json tool_wait_for_pause(const nlohmann::json& params) {
 
     const int timeout_ms = parse_int(params, "timeout_ms", 10000, 0, 300000);
     const int poll_ms = parse_int(params, "poll_ms", 25, 10, 1000);
-    const int instruction_count = parse_int(params, "instruction_count", 8, 1, 32);
-    const bool include_context = parse_bool(params, "include_context", true);
+    const int instruction_count = parse_int(params, "instruction_count", 4, 1, 32);
+    const bool include_context = parse_bool(params, "include_context", false);
     nlohmann::json result = wait_for_pause(timeout_ms, poll_ms, instruction_count);
     result["action"] = "wait_for_pause";
     if (include_context && DbgIsDebugging() && !DbgIsRunning()) {
-        result["break_context"] = tool_snapshot_break_context({{"instruction_count", instruction_count}, {"stack_slots", 8}});
+        result["break_context"] = tool_snapshot_break_context({{"instruction_count", instruction_count}, {"stack_slots", 4}});
     }
     return result;
 }
@@ -225,7 +225,7 @@ nlohmann::json tool_run_until(const nlohmann::json& params) {
     const duint address = parse_address(params, "address");
     const int timeout_ms = parse_int(params, "timeout_ms", 10000, 0, 300000);
     const int poll_ms = parse_int(params, "poll_ms", 25, 10, 1000);
-    const int instruction_count = parse_int(params, "instruction_count", 8, 1, 32);
+    const int instruction_count = parse_int(params, "instruction_count", 4, 1, 32);
     const bool temporary = parse_bool(params, "temporary", true);
     const bool keep_on_timeout = parse_bool(params, "keep_breakpoint_on_timeout", false);
 
@@ -298,7 +298,7 @@ nlohmann::json tool_wait_for_module(const nlohmann::json& params) {
     const std::string module_name = required_string(params, "module");
     const int timeout_ms = parse_int(params, "timeout_ms", 15000, 0, 300000);
     const int poll_ms = parse_int(params, "poll_ms", 100, 25, 2000);
-    const int instruction_count = parse_int(params, "instruction_count", 8, 1, 32);
+    const int instruction_count = parse_int(params, "instruction_count", 4, 1, 32);
     const bool run_debuggee = parse_bool(params, "run", true);
     const bool pause_on_found = parse_bool(params, "pause_on_found", true);
     const ULONGLONG start = GetTickCount64();
